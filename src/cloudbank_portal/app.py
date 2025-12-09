@@ -173,9 +173,11 @@ def _datasets_section(datasets: list[dict[str, Any]]) -> Section:
         title = ds.get("title") or ds.get("id")
         fmt = ds.get("format", "")
         location = ds.get("location", "")
+        size_bytes = ds.get("bytes")
+        size_text = f" • {size_bytes} bytes" if size_bytes is not None else ""
         items.append(
             Li(
-                A(f"{title} ({fmt})", href=f"/datasets/{ds.get('id')}"),
+                A(f"{title} ({fmt}{size_text})", href=f"/datasets/{ds.get('id')}"),
                 P(location),
             )
         )
@@ -220,7 +222,7 @@ def build_app() -> FastHTML:
             return JSONResponse({"detail": "Dataset not found"}, status_code=404)
         return JSONResponse(meta)
 
-    @rt("/datasets/{dataset_id}")
+    @rt("/datasets/{dataset_id:path}")
     def get_dataset_page(dataset_id: str):
         bucket = _get_bucket_name()
         meta = get_dataset_metadata(dataset_id, bucket)
@@ -229,6 +231,7 @@ def build_app() -> FastHTML:
         return Main(
             H2(meta.get("title", dataset_id)),
             P(f"Format: {meta.get('format', 'unknown')}"),
+            P(f"Size (bytes): {meta.get('bytes', 'unknown')}"),
             P(f"Location: {meta.get('location', 'N/A')}"),
             P(meta.get("description", "")),
             Form(Button("Back", type="submit"), method="get", action="/"),
