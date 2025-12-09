@@ -111,16 +111,26 @@ def _extract_netcdf_metadata(path: str, description: str) -> dict[str, Any]:
     meta: dict[str, Any] = {}
     with Dataset(path, "r") as ds:
         meta["title"] = getattr(ds, "title", None) or os.path.basename(path)
-        meta["description"] = getattr(ds, "summary", None) or getattr(ds, "description", None) or description
+        meta["description"] = (
+            getattr(ds, "summary", None)
+            or getattr(ds, "description", None)
+            or getattr(ds, "processing_notes", None)
+            or description
+        )
         meta["creator"] = getattr(ds, "creator_name", None) or getattr(ds, "author", None)
         meta["publisher"] = getattr(ds, "publisher_name", None)
         meta["contributor"] = getattr(ds, "contributor_name", None)
 
+        subjects = set()
         keywords = getattr(ds, "keywords", "") or getattr(ds, "keywords_vocabulary", "")
-        meta["subject"] = [k.strip() for k in keywords.split(",") if k.strip()]
+        subjects.update(k.strip() for k in keywords.split(",") if k.strip())
+        feature_type = getattr(ds, "featureType", None)
+        if feature_type:
+            subjects.add(feature_type)
+        meta["subject"] = sorted(subjects)
 
         meta["type"] = "dataset"
-        meta["format"] = getattr(ds, "file_format", None) or "NetCDF"
+        meta["format"] = getattr(ds, "file_format", None) or getattr(ds, "Convention", None) or "NetCDF"
         meta["source"] = getattr(ds, "source", None)
         meta["rights"] = getattr(ds, "license", None)
         meta["coverage"] = {
@@ -137,6 +147,8 @@ def _extract_netcdf_metadata(path: str, description: str) -> dict[str, Any]:
         }
         meta["date"] = getattr(ds, "date_created", None)
         meta["modified"] = getattr(ds, "date_modified", None)
+        if "feature_id" in ds.dimensions:
+            meta["extent"] = {"features": len(ds.dimensions["feature_id"])}
     return meta
 
 
