@@ -12,6 +12,7 @@ from typing import Any, Optional, Tuple
 from fasthtml.common import (
     A,
     Button,
+    Container,
     Div,
     FastHTML,
     Form,
@@ -321,7 +322,16 @@ def _metadata_section(meta: dict[str, Any], size_text: str) -> Section:
 
 def build_app() -> FastHTML:
     """Create a small FastHTML demo app."""
-    app, rt = fast_app()
+    styles = {
+        ".page": {
+            "max-width": "900px",
+            "margin": "0 auto",
+            "padding": "1.5rem",
+            "line-height": "1.5",
+            "font-family": "Arial, sans-serif",
+        }
+    }
+    app, rt = fast_app(cls="page", styles=styles)
 
     @rt("/", methods=["GET"])
     def get_root():
@@ -335,6 +345,7 @@ def build_app() -> FastHTML:
             ),
             _upload_section(),
             _datasets_section(datasets),
+            cls="page"
         )
         page.title = "Cloudbank Toy Data Portal"
         return page
@@ -374,6 +385,7 @@ def build_app() -> FastHTML:
             P(f"Location: {meta.get('location', 'N/A')}"),
             _metadata_section(meta, size_text),
             Form(Button("Back", type="submit"), method="get", action="/"),
+            cls="page"
         )
 
     @rt("/", methods=["POST"])
