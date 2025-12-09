@@ -16,5 +16,13 @@ Run tests:
 uv run pytest
 ```
 
+## Google Cloud Storage upload
+Set an environment variable with your bucket name before starting the app so uploads go to GCS:
+```bash
+export GCS_BUCKET="your-bucket-name"
+uv run python -m cloudbank_portal
+```
+On GKE Autopilot, use Workload Identity or a service account that has `roles/storage.objectAdmin` on the bucket.
+
 ## Container build
 The Dockerfile runs the app with uvicorn. The GitHub Actions workflow builds and pushes the image to GHCR (ghcr.io/<owner>/cloudbank_toy_data_portal).
