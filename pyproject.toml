@@ -1,0 +1,21 @@
+[project]
+name = "cloudbank-toy-data-portal"
+version = "0.1.0"
+description = "Minimal FastHTML-based toy hydrology data portal"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "python-fasthtml>=0.12.36",
+    "uvicorn>=0.38.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0.0"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
