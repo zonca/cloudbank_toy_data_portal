@@ -190,7 +190,7 @@ def build_app() -> FastHTML:
     def get_root():
         bucket = _get_bucket_name()
         datasets = list_datasets(bucket)
-        return Main(
+        page = Main(
             H1("Cloudbank Toy Data Portal"),
             P(
                 "A minimal FastHTML app that will later connect to storage and metadata "
@@ -199,6 +199,8 @@ def build_app() -> FastHTML:
             _upload_section(),
             _datasets_section(datasets),
         )
+        page.title = "Cloudbank Toy Data Portal"
+        return page
 
     @rt("/healthz")
     def get_health():
