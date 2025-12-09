@@ -279,6 +279,46 @@ def _datasets_section(datasets: list[dict[str, Any]]) -> Section:
     return Section(H3("Available datasets"), Ul(*items))
 
 
+def _metadata_section(meta: dict[str, Any], size_text: str) -> Section:
+    rows = []
+    def add(label: str, value: Any):
+        if value is None or value == "" or value == []:
+            return
+        if isinstance(value, list):
+            value = ", ".join(str(v) for v in value if v)
+        rows.append(Li(f"{label}: {value}"))
+
+    add("Identifier", meta.get("identifier") or meta.get("location"))
+    add("Description", meta.get("description"))
+    add("Creator", meta.get("creator"))
+    add("Publisher", meta.get("publisher"))
+    add("Contributor", meta.get("contributor"))
+    add("Subjects", meta.get("subject"))
+    add("Type", meta.get("type"))
+    add("Format", meta.get("format"))
+    add("Source", meta.get("source"))
+    add("Rights", meta.get("rights"))
+    add("Size", size_text)
+    add("Date created", meta.get("date"))
+    add("Date modified", meta.get("modified"))
+    add("Uploaded at", meta.get("uploaded_at"))
+    coverage = meta.get("coverage", {}) or {}
+    spatial = coverage.get("spatial") or {}
+    bbox = spatial.get("bbox") or {}
+    bbox_parts = [f"{k}={v}" for k, v in bbox.items() if v is not None]
+    if bbox_parts:
+        add("Spatial coverage (bbox)", "; ".join(bbox_parts))
+    if spatial.get("crs"):
+        add("Spatial CRS", spatial.get("crs"))
+    temporal = coverage.get("temporal") or {}
+    if temporal.get("start") or temporal.get("end"):
+        add("Temporal coverage", f"{temporal.get('start')} to {temporal.get('end')}")
+    extent = meta.get("extent") or {}
+    if extent.get("features"):
+        add("Feature count", extent.get("features"))
+    return Section(H3("Metadata"), Ul(*rows))
+
+
 def build_app() -> FastHTML:
     """Create a small FastHTML demo app."""
     app, rt = fast_app()
@@ -331,10 +371,8 @@ def build_app() -> FastHTML:
             pass
         return Main(
             H2(meta.get("title", dataset_id)),
-            P(f"Format: {meta.get('format', 'unknown')}"),
-            P(f"Size: {size_text}"),
             P(f"Location: {meta.get('location', 'N/A')}"),
-            P(meta.get("description", "")),
+            _metadata_section(meta, size_text),
             Form(Button("Back", type="submit"), method="get", action="/"),
         )
 
