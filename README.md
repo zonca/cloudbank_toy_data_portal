@@ -18,6 +18,7 @@ Small Python web app (FastHTML + Starlette + Uvicorn) that backs the Cloudbank h
   - Reads the bucket name from `GCS_BUCKET`.
   - Uses `google-cloud-storage` to create a blob under `uploads/<uuid>_<filename>`.
   - Streams the file with the provided content type and returns the `gs://` path.
+- During upload, the app parses the NetCDF file and writes a Dublin Core-inspired JSON sidecar capturing title, description, creator/publisher, rights, subjects, spatial/temporal coverage, and dates.
 - `cloudbank_portal.run()` runs the app with Uvicorn; `PORT` defaults to `8000`.
 - Dataset APIs use a small in-app catalog plus any uploaded objects in the bucket (if present).
 
@@ -38,6 +39,11 @@ Examples:
 curl http://127.0.0.1:8000/api/datasets
 curl http://127.0.0.1:8000/api/datasets/camels-usgs-streamflow
 ```
+
+## Metadata handling (toy portal scope)
+- Per-upload JSON sidecars live under `metadata/<upload-key>.json`.
+- Sidecars include a small Dublin Core-inspired subset: `title`, `description`, `creator`, `publisher`, optional `contributor`, `subject` keywords, `type` (`dataset`), `format`, `identifier`, `source`, `rights`, `coverage` (`spatial` bbox/CRS and `temporal` start/end), `date` (created), and `modified`.
+- During upload the app parses the NetCDF global attributes and time variable (if present) to populate these fields; missing values fall back to the user-provided description or defaults.
 
 ## Local development
 ```bash

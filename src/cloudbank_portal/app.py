@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import tempfile
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional, Tuple
 
 from fasthtml.common import (
     A,
@@ -27,6 +29,7 @@ from fasthtml.common import (
 )
 from google.cloud import storage
 from google.cloud.exceptions import GoogleCloudError
+from netCDF4 import Dataset, num2date
 from starlette.datastructures import UploadFile
 from starlette.responses import JSONResponse
 
@@ -37,7 +40,17 @@ def _get_bucket_name() -> str | None:
     return os.environ.get("GCS_BUCKET")
 
 
-def upload_to_gcs(file: UploadFile, bucket_name: str) -> tuple[storage.Bucket, storage.Blob]:
+def _save_upload_to_temp(file: UploadFile) -> str:
+    """Persist the uploaded file to a temporary location for parsing and upload."""
+    file.file.seek(0)
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        temp_path = tmp.name
+    file.file.seek(0)
+    return temp_path
+
+
+def upload_to_gcs(file: UploadFile, bucket_name: str, temp_path: str) -> tuple[storage.Bucket, storage.Blob]:
     """Upload the provided file to GCS and return the bucket and blob."""
     _validate_bucket_name(bucket_name)
     client = storage.Client()
@@ -45,8 +58,7 @@ def upload_to_gcs(file: UploadFile, bucket_name: str) -> tuple[storage.Bucket, s
     safe_name = file.filename or "upload.nc"
     blob_name = f"uploads/{uuid.uuid4()}_{safe_name}"
     blob = bucket.blob(blob_name)
-    file.file.seek(0)
-    blob.upload_from_file(file.file, content_type=file.content_type or "application/octet-stream")
+    blob.upload_from_filename(temp_path, content_type=file.content_type or "application/octet-stream")
     blob.reload()
     return bucket, blob
 
@@ -71,17 +83,84 @@ def _blob_to_metadata(blob: storage.Blob, bucket_name: str) -> dict[str, Any]:
     }
 
 
-def _write_metadata(bucket: storage.Bucket, blob: storage.Blob, description: str) -> dict[str, Any]:
+def _safe_float(val: Any) -> Optional[float]:
+    try:
+        return float(val)
+    except Exception:
+        return None
+
+
+def _extract_time_coverage(ds: Dataset) -> dict[str, Optional[str]]:
+    temporal = {"start": None, "end": None}
+    time_var = ds.variables.get("time")
+    if time_var is None:
+        return temporal
+    try:
+        dates = list(num2date(time_var[:], getattr(time_var, "units", None)))
+        if len(dates) == 0:
+            return temporal
+        temporal["start"] = min(dates).isoformat()
+        temporal["end"] = max(dates).isoformat()
+    except Exception:
+        return temporal
+    return temporal
+
+
+def _extract_netcdf_metadata(path: str, description: str) -> dict[str, Any]:
+    """Pull a small Dublin Core-inspired subset from a NetCDF file."""
+    meta: dict[str, Any] = {}
+    with Dataset(path, "r") as ds:
+        meta["title"] = getattr(ds, "title", None) or os.path.basename(path)
+        meta["description"] = getattr(ds, "summary", None) or getattr(ds, "description", None) or description
+        meta["creator"] = getattr(ds, "creator_name", None) or getattr(ds, "author", None)
+        meta["publisher"] = getattr(ds, "publisher_name", None)
+        meta["contributor"] = getattr(ds, "contributor_name", None)
+
+        keywords = getattr(ds, "keywords", "") or getattr(ds, "keywords_vocabulary", "")
+        meta["subject"] = [k.strip() for k in keywords.split(",") if k.strip()]
+
+        meta["type"] = "dataset"
+        meta["format"] = getattr(ds, "file_format", None) or "NetCDF"
+        meta["source"] = getattr(ds, "source", None)
+        meta["rights"] = getattr(ds, "license", None)
+        meta["coverage"] = {
+            "spatial": {
+                "bbox": {
+                    "lat_min": _safe_float(getattr(ds, "geospatial_lat_min", None)),
+                    "lat_max": _safe_float(getattr(ds, "geospatial_lat_max", None)),
+                    "lon_min": _safe_float(getattr(ds, "geospatial_lon_min", None)),
+                    "lon_max": _safe_float(getattr(ds, "geospatial_lon_max", None)),
+                },
+                "crs": getattr(ds, "geospatial_bounds_crs", None),
+            },
+            "temporal": _extract_time_coverage(ds),
+        }
+        meta["date"] = getattr(ds, "date_created", None)
+        meta["modified"] = getattr(ds, "date_modified", None)
+    return meta
+
+
+def _write_metadata(bucket: storage.Bucket, blob: storage.Blob, description: str, extracted: dict[str, Any]) -> dict[str, Any]:
     metadata = {
         "id": blob.name,
-        "title": blob.name.split("/")[-1] or blob.name,
-        "format": blob.content_type or "application/octet-stream",
+        "identifier": f"gs://{bucket.name}/{blob.name}",
+        "title": extracted.get("title") or (blob.name.split("/")[-1] or blob.name),
+        "description": extracted.get("description") or description,
+        "creator": extracted.get("creator"),
+        "publisher": extracted.get("publisher"),
+        "contributor": extracted.get("contributor"),
+        "subject": extracted.get("subject") or [],
+        "type": extracted.get("type") or "dataset",
+        "format": extracted.get("format") or blob.content_type or "application/octet-stream",
         "bytes": blob.size,
         "updated": blob.updated.isoformat() if isinstance(blob.updated, datetime) else None,
         "location": f"gs://{bucket.name}/{blob.name}",
-        "description": description,
+        "source": extracted.get("source") or "upload",
+        "rights": extracted.get("rights"),
+        "coverage": extracted.get("coverage") or {},
+        "date": extracted.get("date"),
+        "modified": extracted.get("modified"),
         "uploaded_at": datetime.utcnow().isoformat() + "Z",
-        "source": "upload",
     }
     meta_blob = bucket.blob(f"metadata/{blob.name}.json")
     meta_blob.upload_from_string(json.dumps(metadata), content_type="application/json")
@@ -257,14 +336,27 @@ def build_app() -> FastHTML:
             if not bucket:
                 upload_msg = "GCS_BUCKET is not set; file not stored."
             else:
+                temp_path = None
                 try:
-                    bucket_obj, blob = upload_to_gcs(file, bucket)
-                    meta = _write_metadata(bucket_obj, blob, clean)
+                    temp_path = _save_upload_to_temp(file)
+                    extracted_meta: dict[str, Any] = {}
+                    try:
+                        extracted_meta = _extract_netcdf_metadata(temp_path, clean)
+                    except Exception:
+                        extracted_meta = {}
+                    bucket_obj, blob = upload_to_gcs(file, bucket, temp_path)
+                    meta = _write_metadata(bucket_obj, blob, clean, extracted_meta)
                     upload_msg = f"Stored at {meta['location']}"
                 except ValueError as exc:
                     upload_msg = f"Invalid bucket name: {exc}"
                 except Exception as exc:  # pragma: no cover - safety net
                     upload_msg = f"Upload failed: {exc}"
+                finally:
+                    if temp_path and os.path.exists(temp_path):
+                        try:
+                            os.remove(temp_path)
+                        except OSError:
+                            pass
         else:
             upload_msg = "No file uploaded."
 

@@ -1,3 +1,4 @@
 python-fasthtml==0.12.36
 uvicorn==0.38.0
 google-cloud-storage==2.18.0
+netCDF4==1.7.1

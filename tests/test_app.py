@@ -1,6 +1,8 @@
 from starlette.testclient import TestClient
+from netCDF4 import Dataset
 
 from cloudbank_portal import build_app
+from cloudbank_portal.app import _extract_netcdf_metadata
 
 
 def test_health_endpoint():
@@ -60,3 +62,29 @@ def test_dataset_page_not_found():
     client = TestClient(build_app())
     resp = client.get("/datasets/unknown")
     assert resp.status_code == 404
+
+
+def test_extract_netcdf_metadata(tmp_path):
+    path = tmp_path / "sample.nc"
+    with Dataset(path, "w", format="NETCDF4") as ds:
+        ds.createDimension("time", 2)
+        t = ds.createVariable("time", "f8", ("time",))
+        t.units = "days since 2000-01-01"
+        t[:] = [0, 1]
+        ds.title = "Test title"
+        ds.summary = "Test summary"
+        ds.creator_name = "Creator"
+        ds.publisher_name = "Publisher"
+        ds.license = "CC-BY"
+        ds.geospatial_lat_min = 10.0
+        ds.geospatial_lat_max = 20.0
+        ds.geospatial_lon_min = -120.0
+        ds.geospatial_lon_max = -110.0
+        ds.geospatial_bounds_crs = "EPSG:4326"
+    meta = _extract_netcdf_metadata(str(path), "user description")
+    assert meta["title"] == "Test title"
+    assert meta["description"] == "Test summary"
+    assert meta["creator"] == "Creator"
+    assert meta["publisher"] == "Publisher"
+    assert meta["coverage"]["spatial"]["bbox"]["lat_min"] == 10.0
+    assert meta["coverage"]["temporal"]["start"].startswith("2000-01-01")
