@@ -1,5 +1,0 @@
-python-fasthtml>=0.12.36
-uvicorn>=0.38.0
-
-[dev]
-pytest>=9.0.0
