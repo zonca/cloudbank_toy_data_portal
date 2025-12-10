@@ -1,6 +1,6 @@
 # Cloudbank Toy Data Portal
 
-Small Python web app (FastHTML + Starlette + Uvicorn) that backs the Cloudbank hydrology tutorial. It serves a landing page, handles uploads to Google Cloud Storage, and exposes a health endpoint. The container image is built and published automatically to the GitHub Container Registry.
+Small Python web app (FastHTML + Starlette + Uvicorn) that backs the Cloudbank hydrology tutorial. It serves a landing page, handles NetCDF uploads to Google Cloud Storage with automated metadata extraction, provides JSON APIs for dataset discovery, and exposes a health endpoint. The container image is built and published automatically to the GitHub Container Registry.
 
 ## What it does
 - Renders a landing page with an upload form and a live list of datasets.
@@ -17,7 +17,7 @@ Small Python web app (FastHTML + Starlette + Uvicorn) that backs the Cloudbank h
 - Upload handling lives in `upload_to_gcs()` (see `src/cloudbank_portal/app.py`). It:
   - Reads the bucket name from `GCS_BUCKET`.
   - Uses `google-cloud-storage` to create a blob under `uploads/<uuid>_<filename>`.
-  - Streams the file with the provided content type and returns the `gs://` path.
+  - Uploads the file via a temporary file with the provided content type and returns the `gs://` path.
 - During upload, the app parses the NetCDF file and writes a Dublin Core-inspired JSON sidecar capturing title, description, creator/publisher, rights, subjects, spatial/temporal coverage, and dates.
 - `cloudbank_portal.run()` runs the app with Uvicorn; `PORT` defaults to `8000`.
 - Dataset APIs use a small in-app catalog plus any uploaded objects in the bucket (if present).
@@ -62,7 +62,7 @@ uv run pytest
 
 ## Container image
 - Dockerfile runs `python -m cloudbank_portal` under Uvicorn.
-- GitHub Actions builds and pushes `ghcr.io/<owner>/cloudbank_toy_data_portal:latest` and a commit-sha tag on every push to `main`.
+- GitHub Actions builds and pushes images to `ghcr.io/zonca/cloudbank_toy_data_portal` with tags: commit SHA, branch name (e.g., `main`), version tags (when tags are pushed), and `latest`.
 - The registry entry is public, so no image pull secret is needed.
 
 Quick test of the image:
@@ -74,7 +74,7 @@ curl http://127.0.0.1:8000/healthz
 ```
 
 ## Deployment notes
-- Designed for Google Kubernetes Engine Autopilot; the tutorial in `2_deploy_portal.md` shows how to deploy it.
+- Designed for Google Kubernetes Engine Autopilot with standard Kubernetes deployment practices.
 - Create the bucket in the same region as the cluster and grant the service account write access.
 - The app is stateless; scaling to multiple replicas is safe. Storage and metadata are handled via Google Cloud Storage.
 - No database is required: the app reads metadata from a small built-in catalog, per-upload JSON sidecars under `metadata/`, and objects discovered in the bucket.

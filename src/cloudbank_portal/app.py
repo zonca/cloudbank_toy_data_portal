@@ -334,8 +334,8 @@ def build_app() -> FastHTML:
         page = Main(
             H1("Cloudbank Toy Data Portal"),
             P(
-                "A minimal FastHTML app that will later connect to storage and metadata "
-                "extraction for hydrology datasets."
+                "A minimal FastHTML app for uploading and managing hydrology datasets "
+                "with automated metadata extraction and Google Cloud Storage integration."
             ),
             _upload_section(),
             _datasets_section(datasets),
@@ -417,8 +417,8 @@ def build_app() -> FastHTML:
             upload_msg = "No file uploaded."
 
         return Main(
-            H2("Thanks!"),
-            P("We recorded your description for the upcoming ingestion step:"),
+            H2("Upload Complete"),
+            P("Your dataset has been processed with the following description:"),
             P(clean),
             P(upload_msg),
             P("Use Back to return to the landing page."),
