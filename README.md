@@ -62,7 +62,7 @@ uv run pytest
 
 ## Container image
 - Dockerfile runs `python -m cloudbank_portal` under Uvicorn.
-- GitHub Actions builds and pushes `ghcr.io/<owner>/cloudbank_toy_data_portal:latest` and a commit-sha tag on every push to `main`.
+- GitHub Actions builds and pushes images to `ghcr.io/zonca/cloudbank_toy_data_portal` with tags: commit SHA, branch name (e.g., `main`), version tags (when tags are pushed), and `latest`.
 - The registry entry is public, so no image pull secret is needed.
 
 Quick test of the image:
@@ -74,7 +74,7 @@ curl http://127.0.0.1:8000/healthz
 ```
 
 ## Deployment notes
-- Designed for Google Kubernetes Engine Autopilot; the tutorial in `2_deploy_portal.md` shows how to deploy it.
+- Designed for Google Kubernetes Engine Autopilot with standard Kubernetes deployment practices.
 - Create the bucket in the same region as the cluster and grant the service account write access.
 - The app is stateless; scaling to multiple replicas is safe. Storage and metadata are handled via Google Cloud Storage.
 - No database is required: the app reads metadata from a small built-in catalog, per-upload JSON sidecars under `metadata/`, and objects discovered in the bucket.
